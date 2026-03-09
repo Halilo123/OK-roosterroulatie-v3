@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OK Rooster Planner</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      margin-bottom: 16px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .row-between {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    .muted { color: #64748b; }
+    .input, select, button, textarea { font: inherit; }
+    .input, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #fff;
+    }
+    button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #0f172a;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #0f172a;
+      color: white;
+      border-color: #0f172a;
+    }
+    button:hover { opacity: 0.95; }
+    .cards {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-bottom: 16px;
+    }
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .tab.active {
+      background: #0f172a;
+      color: #fff;
+      border-color: #0f172a;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 900px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    th {
+      border-bottom: 1px solid #cbd5e1;
+      background: #f8fafc;
+    }
+    .danger {
+      color: #dc2626;
+      font-weight: 700;
+    }
+    .preline { white-space: pre-line; }
+    .small { font-size: 13px; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    @media (max-width: 700px) {
+      .page { padding: 12px; }
+      .row-between { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="panel">
+      <div class="row-between">
+        <div>
+          <h1>OK Rooster Planner</h1>
+          <p class="muted">Roulatie op basis van de competentiematrix, met voorkeur voor alle medewerkers die Groen zijn op een dienst, zodat kennis per dienst behouden blijft. Inclusief vaste vrije dagen, OK-FLEX 1/2, invaller suggesties en export naar Excel.</p>
+        </div>
+        <div class="row" style="min-width: 320px;">
+          <div style="min-width: 120px;">
+            <select id="selectedBlock"></select>
+          </div>
+          <div style="min-width: 120px;">
+            <select id="selectedWeek">
+              <option value="1">Week 1</option>
+              <option value="2">Week 2</option>
+            </select>
+          </div>
+          <button class="primary" id="refreshBtn">Refresh rooster</button>
+          <button id="saveBtn">Opslaan</button>
+          <button id="resetBtn">Reset</button>
+          <button id="exportBtn">Export Excel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="panel">
+        <div class="muted small">Geselecteerd blok</div>
+        <div class="card-value" id="cardBlock">-</div>
+      </div>
+      <div class="panel">
+        <div class="muted small">Week van blok</div>
+        <div class="card-value" id="cardWeek">-</div>
+      </div>
+      <div class="panel">
+        <div class="muted small">Periode</div>
+        <div class="card-value" style="font-size: 20px;" id="cardPeriod">-</div>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+    <div id="tabContent"></div>
+  </div>
+
+  <script>
+    const days = ["Ma", "Di", "Wo", "Do", "Vr"];
+    const services = ["HCK", "ADE", "OK1", "OK2", "OK4"];
+    const allSkills = ["Groen", "Oranje", "Geel", "Rood"];
+    const cycleLength = 3; // 3 blokken = 6 weken
+
+    const serviceTimes = {
+      HCK: "07:00",
+      ADE: "07:00",
+      OK1: "08:00",
+      OK2: "08:00",
+      OK4: "08:00",
+    };
+
+    const defaultEmployees = [
+      { name: "Gordon", hours: 32, pref: "08:00", fixedOff: "Ma", offCodes: "Ma", role: "OK" },
+      { name: "Lyon", hours: 36, pref: "08:00", fixedOff: "Do", offCodes: "Do,Vr", role: "OK" },
+      { name: "Elena", hours: 32, pref: "08:00", fixedOff: "Vr", offCodes: "Vr", role: "OK" },
+      { name: "Murphy", hours: 36, pref: "07:00", fixedOff: "Wo", offCodes: "Wo", role: "OK" },
+      { name: "Jelle", hours: 36, pref: "Flexibel", fixedOff: "Do", offCodes: "Do", role: "OK" },
+      { name: "Roy", hours: 36, pref: "07:00", fixedOff: "Ma", offCodes: "Ma", role: "OK" },
+      { name: "Jerico", hours: 36, pref: "Flexibel", fixedOff: "Ma", offCodes: "Ma,Di na weekend", role: "OK" },
+      { name: "Grada", hours: 0, pref: "08:00", fixedOff: "", offCodes: "", role: "IC" },
+      { name: "Joelle", hours: 0, pref: "08:00", fixedOff: "", offCodes: "", role: "IC" },
+    ];
+
+    const defaultCompetencies = {
+      Gordon: { HCK: "Rood", ADE: "Rood", OK1: "Groen", OK2: "Groen", OK4: "Oranje" },
+      Lyon: { HCK: "Rood", ADE: "Groen", OK1: "Groen", OK2: "Groen", OK4: "Groen" },
+      Elena: { HCK: "Rood", ADE: "Groen", OK1: "Rood", OK2: "Groen", OK4: "Rood" },
+      Murphy: { HCK: "Groen", ADE: "Groen", OK1: "Rood", OK2: "Rood", OK4: "Groen" },
+      Jelle: { HCK: "Groen", ADE: "Groen", OK1: "Groen", OK2: "Groen", OK4: "Groen" },
+      Roy: { HCK: "Groen", ADE: "Groen", OK1: "Groen", OK2: "Groen", OK4: "Groen" },
+      Jerico: { HCK: "Rood", ADE: "Rood", OK1: "Groen", OK2: "Groen", OK4: "Groen" },
+      Grada: { HCK: "Rood", ADE: "Rood", OK1: "Groen", OK2: "Rood", OK4: "Rood" },
+      Joelle: { HCK: "Rood", ADE: "Rood", OK1: "Groen", OK2: "Rood", OK4: "Rood" },
+    };
+
+    function addDays(date, amount) {
+      const next = new Date(date);
+      next.setDate(next.getDate() + amount);
+      return next;
+    }
+
+    function toIsoDate(date) {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(`${dateStr}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return dateStr;
+      return new Intl.DateTimeFormat("nl-NL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(date);
+    }
+
+    function getDayDates(startDate) {
+      const start = new Date(`${startDate}T00:00:00`);
+      return days.reduce((acc, day, index) => {
+        acc[day] = toIsoDate(addDays(start, index));
+        return acc;
+      }, {});
+    }
+
+    function offSet(offCodes) {
+      return new Set(
+        (offCodes || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+    }
+
+    function skillScore(level) {
+      if (level === "Groen") return 5;
+      if (level === "Oranje") return 2;
+      if (level === "Geel") return 1;
+      return 0;
+    }
+
+    function getEmployeeScore(name, competencies) {
+      const row = competencies[name] || {};
+      return services.reduce((sum, service) => sum + skillScore(row[service]), 0);
+    }
+
+    function isICEmployee(employee) {
+      return employee && employee.role === "IC";
+    }
+
+    function isEligibleByRole(employee, service) {
+      if (!employee) return false;
+      if (!isICEmployee(employee)) return true;
+      return service === "OK1";
+    }
+
+    function weeklyOffConflictCount(employee) {
+      const offDays = offSet(employee.offCodes);
+      return days.filter((day) => offDays.has(day)).length;
+    }
+
+    function rankCandidateForService(employee, service, competencies, currentCounts = {}) {
+      const skill = skillScore((competencies[employee.name] || {})[service]);
+      const fairness = currentCounts[employee.name] || 0;
+      const prefBonus = employee.pref === "Flexibel" ? 1 : employee.pref === serviceTimes[service] ? 1 : 0;
+      const totalScore = getEmployeeScore(employee.name, competencies);
+      const offConflicts = weeklyOffConflictCount(employee);
+      const roleBonus = isICEmployee(employee) && service === "OK1" ? 2 : 0;
+
+      return {
+        name: employee.name,
+        skill,
+        fairness,
+        prefBonus,
+        totalScore,
+        offConflicts,
+        roleBonus,
+      };
+    }
+
+    function pickBestEmployeeForService(service, row, employees, competencies, currentCounts = {}) {
+      const planned = new Set(services.map((s) => row[s]).filter(Boolean));
+
+      const ranked = employees
+        .filter((e) => !planned.has(e.name))
+        .filter((e) => isEligibleByRole(e, service))
+        .map((e) => rankCandidateForService(e, service, competencies, currentCounts))
+        .filter((candidate) => candidate.skill > 0)
+        .sort((a, b) => {
+          if (b.skill !== a.skill) return b.skill - a.skill;
+          if (a.offConflicts !== b.offConflicts) return a.offConflicts - b.offConflicts;
+          if (b.roleBonus !== a.roleBonus) return b.roleBonus - a.roleBonus;
+          if (b.prefBonus !== a.prefBonus) return b.prefBonus - a.prefBonus;
+          if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+          if (a.fairness !== b.fairness) return a.fairness - b.fairness;
+          return a.name.localeCompare(b.name);
+        });
+
+      return ranked[0]?.name || "";
+    }
+
+    function computeFlexCandidates(row, employees, competencies, currentCounts = {}) {
+      const planned = new Set(services.map((s) => row[s]).filter(Boolean));
+
+      return employees
+        .filter((employee) => !planned.has(employee.name))
+        .map((employee) => ({
+          name: employee.name,
+          totalScore: getEmployeeScore(employee.name, competencies),
+          greenCount: services.filter((service) => (competencies[employee.name] || {})[service] === "Groen").length,
+          fairness: currentCounts[employee.name] || 0,
+          offConflicts: weeklyOffConflictCount(employee),
+          icPenalty: isICEmployee(employee) ? 1 : 0,
+        }))
+        .sort((a, b) => {
+          if (a.icPenalty !== b.icPenalty) return a.icPenalty - b.icPenalty;
+          if (a.offConflicts !== b.offConflicts) return a.offConflicts - b.offConflicts;
+          if (b.greenCount !== a.greenCount) return b.greenCount - a.greenCount;
+          if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+          if (a.fairness !== b.fairness) return a.fairness - b.fairness;
+          return a.name.localeCompare(b.name);
+        });
+    }
+
+    function dashboardData(rotation, weekRows) {
+      const counts = {};
+
+      function add(name, key) {
+        if (!name) return;
+        if (!counts[name]) counts[name] = { "07:00": 0, "08:00": 0, FLEX: 0, totaal: 0 };
+        counts[name][key] += 1;
+        counts[name].totaal += 1;
+      }
+
+      rotation.forEach((row) => {
+        add(row.HCK, "07:00");
+        add(row.ADE, "07:00");
+        add(row.OK1, "08:00");
+        add(row.OK2, "08:00");
+        add(row.OK4, "08:00");
+        add(row.flex1, "FLEX");
+        add(row.flex2, "FLEX");
+      });
+
+      weekRows.forEach((row) => {
+        add(row.flex, "FLEX");
+        add(row.flex2, "FLEX");
+      });
+
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, ...value }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function createEmptyRotation() {
+      return Array.from({ length: 6 }, (_, blockIndex) => {
+        const blockNumber = blockIndex + 1;
+        const blockStart = addDays(new Date("2026-01-05T00:00:00"), blockIndex * 14);
+
+        return [1, 2].map((weekInBlock) => {
+          const weekStart = addDays(blockStart, (weekInBlock - 1) * 7);
+          const weekEnd = addDays(weekStart, 4);
+
+          return {
+            id: `${blockNumber}-${weekInBlock}`,
+            block: blockNumber,
+            weekInBlock,
+            startDate: toIsoDate(weekStart),
+            endDate: toIsoDate(weekEnd),
+            HCK: "",
+            ADE: "",
+            OK1: "",
+            OK2: "",
+            OK4: "",
+            flex1: "",
+            flex2: "",
+          };
+        });
+      }).flat();
+    }
+
+    const STORAGE_KEY = "ok-rooster-planner-state-v2";
+
+    const state = {
+      activeTab: "weektemplate",
+      selectedBlock: "1",
+      selectedWeek: "1",
+      employees: JSON.parse(JSON.stringify(defaultEmployees)),
+      competencies: JSON.parse(JSON.stringify(defaultCompetencies)),
+      rotation: [],
+    };
+
+    function buildServicePools() {
+      const pools = {};
+
+      services.forEach((service) => {
+        const ranked = state.employees
+          .filter((employee) => isEligibleByRole(employee, service))
+          .map((employee) => ({
+            employee,
+            rank: rankCandidateForService(employee, service, state.competencies, {}),
+          }))
+          .filter((item) => item.rank.skill > 0)
+          .sort((a, b) => {
+            const aIsGreen = (state.competencies[a.employee.name] || {})[service] === "Groen" ? 1 : 0;
+            const bIsGreen = (state.competencies[b.employee.name] || {})[service] === "Groen" ? 1 : 0;
+            if (bIsGreen !== aIsGreen) return bIsGreen - aIsGreen;
+            if (b.rank.skill !== a.rank.skill) return b.rank.skill - a.rank.skill;
+            if (a.rank.offConflicts !== b.rank.offConflicts) return a.rank.offConflicts - b.rank.offConflicts;
+            if (b.rank.roleBonus !== a.rank.roleBonus) return b.rank.roleBonus - a.rank.roleBonus;
+            if (b.rank.prefBonus !== a.rank.prefBonus) return b.rank.prefBonus - a.rank.prefBonus;
+            if (b.rank.totalScore !== a.rank.totalScore) return b.rank.totalScore - a.rank.totalScore;
+            return a.employee.name.localeCompare(b.employee.name);
+          });
+
+        const greenPool = ranked
+          .filter((item) => (state.competencies[item.employee.name] || {})[service] === "Groen")
+          .map((item) => item.employee.name);
+
+        const fallbackPool = ranked
+          .filter((item) => (state.competencies[item.employee.name] || {})[service] !== "Groen")
+          .map((item) => item.employee.name);
+
+        pools[service] = greenPool.length > 0 ? greenPool.concat(fallbackPool) : fallbackPool;
+      });
+
+      return pools;
+    }
+
+    function buildFlexPool() {
+      return state.employees
+        .map((employee) => ({
+          name: employee.name,
+          totalScore: getEmployeeScore(employee.name, state.competencies),
+          greenCount: services.filter((service) => (state.competencies[employee.name] || {})[service] === "Groen").length,
+          offConflicts: weeklyOffConflictCount(employee),
+          icPenalty: isICEmployee(employee) ? 1 : 0,
+        }))
+        .sort((a, b) => {
+          if (a.icPenalty !== b.icPenalty) return a.icPenalty - b.icPenalty;
+          if (a.offConflicts !== b.offConflicts) return a.offConflicts - b.offConflicts;
+          if (b.greenCount !== a.greenCount) return b.greenCount - a.greenCount;
+          if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+          return a.name.localeCompare(b.name);
+        })
+        .map((candidate) => candidate.name);
+    }
+
+    function buildRotationCycle() {
+      const currentCounts = {};
+      const flexCounts = {};
+      const serviceRotationIndex = {};
+      const rotation = createEmptyRotation();
+      const servicePools = buildServicePools();
+      const flexPool = buildFlexPool();
+
+      services.forEach((service) => {
+        serviceRotationIndex[service] = 0;
+      });
+
+      const maxBlock = Math.max(...rotation.map((r) => r.block));
+
+      for (let block = 1; block <= maxBlock; block++) {
+        const weekRows = rotation.filter((r) => r.block === block);
+
+        const baseRow = {
+          ...weekRows[0],
+          HCK: "",
+          ADE: "",
+          OK1: "",
+          OK2: "",
+          OK4: "",
+          flex1: "",
+          flex2: "",
+        };
+
+        const usedNames = new Set();
+
+        services.forEach((service) => {
+          const pool = servicePools[service] || [];
+          let picked = "";
+
+          if (pool.length > 0) {
+            for (let i = 0; i < pool.length; i++) {
+              const candidate = pool[(serviceRotationIndex[service] + i) % pool.length];
+              if (!usedNames.has(candidate)) {
+                const employee = state.employees.find((e) => e.name === candidate);
+                if (employee && isEligibleByRole(employee, service)) {
+                  picked = candidate;
+                  serviceRotationIndex[service] = (serviceRotationIndex[service] + i + 1) % pool.length;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!picked) {
+            picked = pickBestEmployeeForService(service, baseRow, state.employees, state.competencies, currentCounts);
+          }
+
+          if (picked) {
+            baseRow[service] = picked;
+            usedNames.add(picked);
+            currentCounts[picked] = (currentCounts[picked] || 0) + 2;
+          }
+        });
+
+        const rotatedFlex = [];
+        for (let i = 0; i < flexPool.length; i++) {
+          const candidate = flexPool[(block - 1 + i) % flexPool.length];
+          if (!usedNames.has(candidate)) {
+            rotatedFlex.push(candidate);
+          }
+        }
+
+        rotatedFlex.sort((a, b) => {
+          const aCount = flexCounts[a] || 0;
+          const bCount = flexCounts[b] || 0;
+          if (aCount !== bCount) return aCount - bCount;
+          return a.localeCompare(b);
+        });
+
+        baseRow.flex1 = rotatedFlex[0] || "";
+        baseRow.flex2 = rotatedFlex.find((name) => name !== baseRow.flex1) || "";
+
+        if (!baseRow.flex1 || !baseRow.flex2) {
+          const flexFallback = computeFlexCandidates(baseRow, state.employees, state.competencies, currentCounts)
+            .filter((candidate) => !usedNames.has(candidate.name))
+            .map((candidate) => candidate.name);
+
+          if (!baseRow.flex1) baseRow.flex1 = flexFallback[0] || "";
+          if (!baseRow.flex2) baseRow.flex2 = flexFallback.find((name) => name !== baseRow.flex1) || "";
+        }
+
+        if (baseRow.flex1) {
+          flexCounts[baseRow.flex1] = (flexCounts[baseRow.flex1] || 0) + 1;
+          currentCounts[baseRow.flex1] = (currentCounts[baseRow.flex1] || 0) + 2;
+        }
+        if (baseRow.flex2) {
+          flexCounts[baseRow.flex2] = (flexCounts[baseRow.flex2] || 0) + 1;
+          currentCounts[baseRow.flex2] = (currentCounts[baseRow.flex2] || 0) + 2;
+        }
+
+        weekRows.forEach((row) => {
+          row.HCK = baseRow.HCK;
+          row.ADE = baseRow.ADE;
+          row.OK1 = baseRow.OK1;
+          row.OK2 = baseRow.OK2;
+          row.OK4 = baseRow.OK4;
+          row.flex1 = baseRow.flex1;
+          row.flex2 = baseRow.flex2;
+        });
+      }
+
+      state.rotation = rotation;
+    }
+
+    function getCurrentBlockRow() {
+      return (
+        state.rotation.find(
+          (row) =>
+            String(row.block) === state.selectedBlock &&
+            String(row.weekInBlock) === state.selectedWeek
+        ) || state.rotation[0]
+      );
+    }
+
+    function computeWeekTemplate() {
+      const row = getCurrentBlockRow();
+      const dayDates = getDayDates(row.startDate);
+
+      const counts = {};
+      state.rotation.forEach((rotationRow) => {
+        [
+          rotationRow.HCK,
+          rotationRow.ADE,
+          rotationRow.OK1,
+          rotationRow.OK2,
+          rotationRow.OK4,
+          rotationRow.flex1,
+          rotationRow.flex2,
+        ].forEach((name) => {
+          if (!name) return;
+          counts[name] = (counts[name] || 0) + 1;
+        });
+      });
+
+      return days.map((day) => {
+        const assignments = {
+          HCK: row.HCK,
+          ADE: row.ADE,
+          OK1: row.OK1,
+          OK2: row.OK2,
+          OK4: row.OK4,
+        };
+
+        const plannedNames = new Set(Object.values(assignments).filter(Boolean));
+        const available = state.employees.filter(
+          (employee) => !plannedNames.has(employee.name) && !offSet(employee.offCodes).has(day)
+        );
+
+        const flexChoices = available
+          .map((employee) => ({
+            name: employee.name,
+            totalScore: getEmployeeScore(employee.name, state.competencies),
+            greenCount: services.filter(
+              (service) => (state.competencies[employee.name] || {})[service] === "Groen"
+            ).length,
+            fairness: counts[employee.name] || 0,
+            offConflicts: weeklyOffConflictCount(employee),
+            icPenalty: isICEmployee(employee) ? 1 : 0,
+          }))
+          .sort((a, b) => {
+            if (a.icPenalty !== b.icPenalty) return a.icPenalty - b.icPenalty;
+            if (a.offConflicts !== b.offConflicts) return a.offConflicts - b.offConflicts;
+            if (b.greenCount !== a.greenCount) return b.greenCount - a.greenCount;
+            if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+            if (a.fairness !== b.fairness) return a.fairness - b.fairness;
+            return a.name.localeCompare(b.name);
+          });
+
+        const flex = flexChoices[0]?.name || "";
+        const flex2 = flexChoices.find((candidate) => candidate.name !== flex)?.name || "";
+
+        const replacements = services
+          .map((service) => {
+            const current = assignments[service];
+            const person = state.employees.find((employee) => employee.name === current);
+            if (!person) return null;
+            if (!offSet(person.offCodes).has(day)) return null;
+
+            const replacementList = state.employees
+              .filter((employee) => employee.name !== current)
+              .filter((employee) => !plannedNames.has(employee.name))
+              .filter((employee) => !offSet(employee.offCodes).has(day))
+              .filter((employee) => isEligibleByRole(employee, service))
+              .map((employee) => rankCandidateForService(employee, service, state.competencies, counts))
+              .filter((candidate) => candidate.skill > 0)
+              .sort((a, b) => {
+                if (b.skill !== a.skill) return b.skill - a.skill;
+                if (a.offConflicts !== b.offConflicts) return a.offConflicts - b.offConflicts;
+                if (b.roleBonus !== a.roleBonus) return b.roleBonus - a.roleBonus;
+                if (b.prefBonus !== a.prefBonus) return b.prefBonus - a.prefBonus;
+                if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+                if (a.fairness !== b.fairness) return a.fairness - b.fairness;
+                return a.name.localeCompare(b.name);
+              })
+              .slice(0, 3)
+              .map((candidate) => candidate.name);
+
+            return `${service}: ${current} → ${replacementList.join(" / ") || "geen match"}`;
+          })
+          .filter(Boolean)
+          .join("\n");
+
+        return {
+          day,
+          date: dayDates[day],
+          ...assignments,
+          flex,
+          flex2,
+          replacements,
+        };
+      });
+    }
+
+    function refreshPlanning() {
+      buildRotationCycle();
+      render();
+    }
+
+    function saveState() {
+      const payload = {
+        activeTab: state.activeTab,
+        selectedBlock: state.selectedBlock,
+        selectedWeek: state.selectedWeek,
+        employees: state.employees,
+        competencies: state.competencies,
+        rotation: state.rotation,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      alert("Wijzigingen opgeslagen.");
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      try {
+        const parsed = JSON.parse(raw);
+        state.activeTab = parsed.activeTab || "weektemplate";
+        state.selectedBlock = parsed.selectedBlock || "1";
+        state.selectedWeek = parsed.selectedWeek || "1";
+        state.employees = Array.isArray(parsed.employees) ? parsed.employees : JSON.parse(JSON.stringify(defaultEmployees));
+        state.competencies = parsed.competencies && typeof parsed.competencies === "object" ? parsed.competencies : JSON.parse(JSON.stringify(defaultCompetencies));
+        state.rotation = Array.isArray(parsed.rotation) && parsed.rotation.length > 0 ? parsed.rotation : [];
+
+        const hasEndOfYearBlocks = state.rotation.some((row) => row.startDate && normalizeDateInput(row.startDate) >= "2026-12-01");
+        if (!hasEndOfYearBlocks) {
+          state.rotation = [];
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Kon opgeslagen gegevens niet laden", error);
+        return false;
+      }
+    }
+
+    function resetState() {
+      localStorage.removeItem(STORAGE_KEY);
+      state.activeTab = "weektemplate";
+      state.selectedBlock = "1";
+      state.selectedWeek = "1";
+      state.employees = JSON.parse(JSON.stringify(defaultEmployees));
+      state.competencies = JSON.parse(JSON.stringify(defaultCompetencies));
+      buildRotationCycle();
+      render();
+    }
+
+    function escapeXml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+    }
+
+    function sheetXml(name, rows) {
+      return `
+        <Worksheet ss:Name="${escapeXml(name)}">
+          <Table>
+            ${rows.map((row) => `
+              <Row>
+                ${row.map((cell) => `<Cell><Data ss:Type="String">${escapeXml(cell)}</Data></Cell>`).join("")}
+              </Row>
+            `).join("")}
+          </Table>
+        </Worksheet>
+      `;
+    }
+
+    function exportExcel() {
+      const currentRow = getCurrentBlockRow();
+      const weekRows = computeWeekTemplate();
+      const dashboard = dashboardData(state.rotation, weekRows);
+
+      const roulatieRows = [
+        ["Blok", "Week van blok", "Van", "Tot", "HCK", "ADE", "OK1", "OK2", "OK4", "OK-FLEX 1", "OK-FLEX 2"],
+        ...state.rotation.map((row) => [row.block, row.weekInBlock, row.startDate, row.endDate, row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex1, row.flex2])
+      ];
+
+      const weektemplateRows = [
+        ["Blok", currentRow.block, "Week", currentRow.weekInBlock],
+        [],
+        ["Dag", "Datum", "HCK", "ADE", "OK1", "OK2", "OK4", "OK-FLEX 1", "OK-FLEX 2", "Invaller suggestie"],
+        ...weekRows.map((row) => [row.day, row.date, row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex, row.flex2, row.replacements])
+      ];
+
+      const medewerkersRows = [
+        ["Naam", "Uren", "Voorkeur", "Vaste vrije dag", "Off-codes", "Rol"],
+        ...state.employees.map((e) => [e.name, e.hours, e.pref, e.fixedOff, e.offCodes, e.role || "OK"])
+      ];
+
+      const competentieRows = [
+        ["Naam", "HCK", "ADE", "OK1", "OK2", "OK4", "Score"],
+        ...state.employees.map((e) => [
+          e.name,
+          (state.competencies[e.name] || {}).HCK || "",
+          (state.competencies[e.name] || {}).ADE || "",
+          (state.competencies[e.name] || {}).OK1 || "",
+          (state.competencies[e.name] || {}).OK2 || "",
+          (state.competencies[e.name] || {}).OK4 || "",
+          getEmployeeScore(e.name, state.competencies)
+        ])
+      ];
+
+      const dashboardRows = [
+        ["Naam", "07:00", "08:00", "FLEX", "Totaal"],
+        ...dashboard.map((row) => [row.name, row["07:00"], row["08:00"], row.FLEX, row.totaal])
+      ];
+
+      const xml = `<?xml version="1.0"?>
+      <?mso-application progid="Excel.Sheet"?>
+      <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+        xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:x="urn:schemas-microsoft-com:office:excel"
+        xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+        xmlns:html="http://www.w3.org/TR/REC-html40">
+        ${sheetXml("Roulatie", roulatieRows)}
+        ${sheetXml("Weektemplate", weektemplateRows)}
+        ${sheetXml("Medewerkers", medewerkersRows)}
+        ${sheetXml("Competenties", competentieRows)}
+        ${sheetXml("Dashboard", dashboardRows)}
+      </Workbook>`;
+
+      const blob = new Blob([xml], { type: "application/vnd.ms-excel" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ok_rooster_export.xls";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function renderTabs() {
+      const tabs = [
+        ["weektemplate", "Weektemplate"],
+        ["roulatie", "Roulatie"],
+        ["medewerkers", "Medewerkers"],
+        ["competenties", "Competenties"],
+        ["dashboard", "Dashboard"],
+      ];
+
+      document.getElementById("tabs").innerHTML = tabs
+        .map(([key, label]) => {
+          const active = state.activeTab === key ? "tab active" : "tab";
+          return `<button class="${active}" data-tab="${key}">${label}</button>`;
+        })
+        .join("");
+
+      document.querySelectorAll("[data-tab]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.activeTab = btn.dataset.tab;
+          render();
+        });
+      });
+    }
+
+    function renderHeader() {
+      const blockSelect = document.getElementById("selectedBlock");
+      blockSelect.innerHTML = Array.from(new Set(state.rotation.map((row) => row.block)))
+        .map((block) => `<option value="${block}" ${String(block) === state.selectedBlock ? "selected" : ""}>Blok ${block}</option>`)
+        .join("");
+
+      document.getElementById("selectedWeek").value = state.selectedWeek;
+
+      const current = getCurrentBlockRow();
+      document.getElementById("cardBlock").textContent = `Blok ${current.block}`;
+      document.getElementById("cardWeek").textContent = `Week ${state.selectedWeek}`;
+      document.getElementById("cardPeriod").textContent = `${formatDate(current.startDate)} t/m ${formatDate(current.endDate)}`;
+
+      blockSelect.onchange = (e) => {
+        state.selectedBlock = e.target.value;
+        render();
+      };
+
+      document.getElementById("selectedWeek").onchange = (e) => {
+        state.selectedWeek = e.target.value;
+        render();
+      };
+
+      document.getElementById("refreshBtn").onclick = refreshPlanning;
+      document.getElementById("saveBtn").onclick = saveState;
+      document.getElementById("resetBtn").onclick = resetState;
+      document.getElementById("exportBtn").onclick = exportExcel;
+    }
+
+    function nameCell(name, isOff) {
+      if (!name) return "-";
+      return `<span class="${isOff ? "danger" : ""}">${name}</span>`;
+    }
+
+    function renderWeektemplate() {
+      const weekRows = computeWeekTemplate();
+
+      return `
+        <div class="panel">
+          <h2>Weektemplate · Blok ${state.selectedBlock} · Week ${state.selectedWeek}</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dag</th>
+                  <th>Datum</th>
+                  ${services.map((service) => `<th>${service}</th>`).join("")}
+                  <th>OK-FLEX 1</th>
+                  <th>OK-FLEX 2</th>
+                  <th>Invaller suggestie</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${weekRows.map((row) => `
+                  <tr>
+                    <td>${row.day}</td>
+                    <td>${formatDate(row.date)}</td>
+                    ${services.map((service) => {
+                      const person = state.employees.find((employee) => employee.name === row[service]);
+                      const isOff = person ? offSet(person.offCodes).has(row.day) : false;
+                      return `<td>${nameCell(row[service], isOff)}${person && isICEmployee(person) ? '<span class="pill">IC</span>' : ''}</td>`;
+                    }).join("")}
+                    <td>${row.flex || "-"}</td>
+                    <td>${row.flex2 || "-"}</td>
+                    <td class="preline">${row.replacements || "-"}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRoulatie() {
+      return `
+        <div class="panel">
+          <h2>Roulatie (2 weken)</h2>
+          <p class="muted small">De basisdiensten rouleren in een cyclus van 3 blokken = 6 weken. Binnen elk blok blijven week 1 en week 2 gelijk. OK-FLEX 1 en OK-FLEX 2 rouleren ook mee zodat iedereen die beschikbaar is aan de beurt komt.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Blok</th>
+                  <th>Week van blok</th>
+                  <th>Van</th>
+                  <th>Tot</th>
+                  ${services.map((service) => `<th>${service}</th>`).join("")}
+                  <th>OK-FLEX 1</th>
+                  <th>OK-FLEX 2</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${state.rotation.map((row, index) => `
+                  <tr>
+                    <td>${row.block}</td>
+                    <td><input class="input" data-rotation="${index}" data-field="weekInBlock" value="${row.weekInBlock}" /></td>
+                    <td><input class="input" data-rotation="${index}" data-field="startDate" value="${row.startDate}" /></td>
+                    <td><input class="input" data-rotation="${index}" data-field="endDate" value="${row.endDate}" /></td>
+                    ${services.map((service) => `
+                      <td><input class="input" data-rotation="${index}" data-field="${service}" value="${row[service] || ""}" /></td>
+                    `).join("")}
+                    <td><input class="input" data-rotation="${index}" data-field="flex1" value="${row.flex1 || ""}" /></td>
+                    <td><input class="input" data-rotation="${index}" data-field="flex2" value="${row.flex2 || ""}" /></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMedewerkers() {
+      return `
+        <div class="panel">
+          <div class="row-between" style="margin-bottom:12px;">
+            <h2 style="margin:0;">Medewerkers & regels</h2>
+            <button id="addEmployeeBtn">Medewerker toevoegen</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Naam</th>
+                  <th>Uren</th>
+                  <th>Voorkeur</th>
+                  <th>Vaste vrije dag</th>
+                  <th>Off-codes</th>
+                  <th>Rol</th>
+                  <th>Actie</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${state.employees.map((employee, index) => `
+                  <tr>
+                    <td><input class="input" data-employee="${index}" data-field="name" value="${employee.name}" /></td>
+                    <td><input class="input" data-employee="${index}" data-field="hours" value="${employee.hours}" /></td>
+                    <td><input class="input" data-employee="${index}" data-field="pref" value="${employee.pref}" /></td>
+                    <td><input class="input" data-employee="${index}" data-field="fixedOff" value="${employee.fixedOff}" /></td>
+                    <td><input class="input" data-employee="${index}" data-field="offCodes" value="${employee.offCodes}" /></td>
+                    <td>
+                      <select class="input" data-employee="${index}" data-field="role">
+                        <option value="OK" ${employee.role === "OK" ? "selected" : ""}>OK</option>
+                        <option value="IC" ${employee.role === "IC" ? "selected" : ""}>IC</option>
+                      </select>
+                    </td>
+                    <td><button data-remove-employee="${employee.name}">Verwijder</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCompetenties() {
+      return `
+        <div class="panel">
+          <h2>Competenties</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Naam</th>
+                  ${services.map((service) => `<th>${service}</th>`).join("")}
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${state.employees.map((employee) => `
+                  <tr>
+                    <td>${employee.name}${isICEmployee(employee) ? '<span class="pill">IC</span>' : ''}</td>
+                    ${services.map((service) => `
+                      <td>
+                        <select class="input" data-skill-name="${employee.name}" data-skill-service="${service}">
+                          ${allSkills.map((skill) => `
+                            <option value="${skill}" ${((state.competencies[employee.name] || {})[service] || "Geel") === skill ? "selected" : ""}>${skill}</option>
+                          `).join("")}
+                        </select>
+                      </td>
+                    `).join("")}
+                    <td>${getEmployeeScore(employee.name, state.competencies)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDashboard() {
+      const weekRows = computeWeekTemplate();
+      const dashboard = dashboardData(state.rotation, weekRows);
+
+      return `
+        <div class="panel">
+          <h2>Dashboard</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Naam</th>
+                  <th>07:00</th>
+                  <th>08:00</th>
+                  <th>FLEX</th>
+                  <th>Totaal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${dashboard.map((row) => `
+                  <tr>
+                    <td>${row.name}</td>
+                    <td>${row["07:00"]}</td>
+                    <td>${row["08:00"]}</td>
+                    <td>${row.FLEX}</td>
+                    <td>${row.totaal}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function bindTabEvents() {
+      document.querySelectorAll("[data-rotation]").forEach((input) => {
+        input.addEventListener("input", (e) => {
+          const index = Number(e.target.dataset.rotation);
+          const field = e.target.dataset.field;
+          state.rotation[index][field] = e.target.value;
+        });
+      });
+
+      document.querySelectorAll("[data-employee]").forEach((input) => {
+        const eventName = input.tagName === "SELECT" ? "change" : "input";
+        input.addEventListener(eventName, (e) => {
+          const index = Number(e.target.dataset.employee);
+          const field = e.target.dataset.field;
+          state.employees[index][field] = e.target.value;
+        });
+      });
+
+      document.querySelectorAll("[data-skill-name]").forEach((select) => {
+        select.addEventListener("change", (e) => {
+          const name = e.target.dataset.skillName;
+          const service = e.target.dataset.skillService;
+          if (!state.competencies[name]) state.competencies[name] = {};
+          state.competencies[name][service] = e.target.value;
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-remove-employee]").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const name = e.target.dataset.removeEmployee;
+          state.employees = state.employees.filter((employee) => employee.name !== name);
+          delete state.competencies[name];
+          state.rotation = state.rotation.map((row) => ({
+            ...row,
+            HCK: row.HCK === name ? "" : row.HCK,
+            ADE: row.ADE === name ? "" : row.ADE,
+            OK1: row.OK1 === name ? "" : row.OK1,
+            OK2: row.OK2 === name ? "" : row.OK2,
+            OK4: row.OK4 === name ? "" : row.OK4,
+            flex1: row.flex1 === name ? "" : row.flex1,
+            flex2: row.flex2 === name ? "" : row.flex2,
+          }));
+          render();
+        });
+      });
+
+      const addBtn = document.getElementById("addEmployeeBtn");
+      if (addBtn) {
+        addBtn.onclick = () => {
+          const newName = `Nieuw${state.employees.length + 1}`;
+          state.employees.push({
+            name: newName,
+            hours: 36,
+            pref: "Flexibel",
+            fixedOff: "",
+            offCodes: "",
+            role: "OK",
+          });
+          state.competencies[newName] = {
+            HCK: "Geel",
+            ADE: "Geel",
+            OK1: "Geel",
+            OK2: "Geel",
+            OK4: "Geel",
+          };
+          render();
+        };
+      }
+    }
+
+    function renderContent() {
+      const content = document.getElementById("tabContent");
+
+      if (state.activeTab === "weektemplate") content.innerHTML = renderWeektemplate();
+      if (state.activeTab === "roulatie") content.innerHTML = renderRoulatie();
+      if (state.activeTab === "medewerkers") content.innerHTML = renderMedewerkers();
+      if (state.activeTab === "competenties") content.innerHTML = renderCompetenties();
+      if (state.activeTab === "dashboard") content.innerHTML = renderDashboard();
+
+      bindTabEvents();
+    }
+
+    function render() {
+      renderHeader();
+      renderTabs();
+      renderContent();
+    }
+
+    if (!loadState()) {
+      buildRotationCycle();
+    } else if (!Array.isArray(state.rotation) || state.rotation.length === 0) {
+      buildRotationCycle();
+    }
+    render();
+  </script>
+</body>
+</html>
