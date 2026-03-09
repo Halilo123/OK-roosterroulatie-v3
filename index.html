@@ -58,10 +58,10 @@
     }
     button.primary {
       background: #0f172a;
-      color: #fff;
+      color: white;
       border-color: #0f172a;
     }
-    button:hover { opacity: 0.96; }
+    button:hover { opacity: 0.95; }
     .cards {
       display: grid;
       gap: 16px;
@@ -89,7 +89,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
-      min-width: 980px;
+      min-width: 900px;
     }
     th, td {
       padding: 10px;
@@ -116,11 +116,6 @@
       font-size: 12px;
       margin-left: 6px;
     }
-    .info-box {
-      margin-top: 8px;
-      color: #475569;
-      font-size: 14px;
-    }
     @media (max-width: 700px) {
       .page { padding: 12px; }
       .row-between { flex-direction: column; align-items: stretch; }
@@ -133,13 +128,9 @@
       <div class="row-between">
         <div>
           <h1>OK Rooster Planner</h1>
-          <p class="muted">
-            Jaarplanning 2026 op basis van competentiematrix, vrije dagen, roulatie per dienst,
-            roterende FLEX-diensten, opslag en Excel-export.
-          </p>
-          <div class="info-box" id="blockInfo"></div>
+          <p class="muted">Roulatie op basis van de competentiematrix, met voorkeur voor alle medewerkers die Groen zijn op een dienst, zodat kennis per dienst behouden blijft. Inclusief vaste vrije dagen, OK-FLEX 1/2, invaller suggesties en export naar Excel.</p>
         </div>
-        <div class="row" style="min-width: 420px;">
+        <div class="row" style="min-width: 320px;">
           <div style="min-width: 120px;">
             <select id="selectedBlock"></select>
           </div>
@@ -180,8 +171,9 @@
     const days = ["Ma", "Di", "Wo", "Do", "Vr"];
     const services = ["HCK", "ADE", "OK1", "OK2", "OK4"];
     const allSkills = ["Groen", "Oranje", "Geel", "Rood"];
-    const STORAGE_KEY = "ok-rooster-planner-state-v3";
     const cycleLength = 3; // 3 blokken = 6 weken
+    const EXPECTED_BLOCKS = 26;
+    const EXPECTED_ROWS = 52;
 
     const serviceTimes = {
       HCK: "07:00",
@@ -215,10 +207,6 @@
       Joelle: { HCK: "Rood", ADE: "Rood", OK1: "Groen", OK2: "Rood", OK4: "Rood" },
     };
 
-    function deepClone(obj) {
-      return JSON.parse(JSON.stringify(obj));
-    }
-
     function addDays(date, amount) {
       const next = new Date(date);
       next.setDate(next.getDate() + amount);
@@ -229,33 +217,21 @@
       const yyyy = date.getFullYear();
       const mm = String(date.getMonth() + 1).padStart(2, "0");
       const dd = String(date.getDate()).padStart(2, "0");
-      return yyyy + "-" + mm + "-" + dd;
+      return `${yyyy}-${mm}-${dd}`;
     }
 
-    function formatDate(value) {
-      if (!value) return "";
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
-      const normalized = normalizeDateInput(value);
-      const date = new Date(normalized + "T00:00:00");
-      if (Number.isNaN(date.getTime())) return value;
-      const dd = String(date.getDate()).padStart(2, "0");
-      const mm = String(date.getMonth() + 1).padStart(2, "0");
-      const yyyy = date.getFullYear();
-      return dd + "/" + mm + "/" + yyyy;
-    }
-
-    function normalizeDateInput(value) {
-      if (!value) return "";
-      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-        const [d, m, y] = value.split("/");
-        return y + "-" + m + "-" + d;
-      }
-      return value;
+    function formatDate(dateStr) {
+      const date = new Date(`${dateStr}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return dateStr;
+      return new Intl.DateTimeFormat("nl-NL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(date);
     }
 
     function getDayDates(startDate) {
-      const start = new Date(normalizeDateInput(startDate) + "T00:00:00");
+      const start = new Date(`${startDate}T00:00:00`);
       return days.reduce((acc, day, index) => {
         acc[day] = toIsoDate(addDays(start, index));
         return acc;
@@ -393,20 +369,17 @@
 
     function createEmptyRotation() {
       const yearStart = new Date("2026-01-05T00:00:00");
-      const yearEnd = new Date("2026-12-31T00:00:00");
       const rows = [];
-      let blockNumber = 1;
-      let blockStart = new Date(yearStart);
 
-      while (blockStart <= yearEnd) {
+      for (let blockNumber = 1; blockNumber <= EXPECTED_BLOCKS; blockNumber++) {
+        const blockStart = addDays(yearStart, (blockNumber - 1) * 14);
+
         for (let weekInBlock = 1; weekInBlock <= 2; weekInBlock++) {
           const weekStart = addDays(blockStart, (weekInBlock - 1) * 7);
           const weekEnd = addDays(weekStart, 4);
 
-          if (weekStart > yearEnd) break;
-
           rows.push({
-            id: blockNumber + "-" + weekInBlock,
+            id: `${blockNumber}-${weekInBlock}`,
             block: blockNumber,
             weekInBlock,
             startDate: toIsoDate(weekStart),
@@ -420,20 +393,19 @@
             flex2: "",
           });
         }
-
-        blockNumber += 1;
-        blockStart = addDays(blockStart, 14);
       }
 
       return rows;
     }
 
+    const STORAGE_KEY = "ok-rooster-planner-state-v5";
+
     const state = {
       activeTab: "weektemplate",
       selectedBlock: "1",
       selectedWeek: "1",
-      employees: deepClone(defaultEmployees),
-      competencies: deepClone(defaultCompetencies),
+      employees: JSON.parse(JSON.stringify(defaultEmployees)),
+      competencies: JSON.parse(JSON.stringify(defaultCompetencies)),
       rotation: [],
     };
 
@@ -505,7 +477,7 @@
         serviceRotationIndex[service] = 0;
       });
 
-      const maxBlock = Math.max(...rotation.map((r) => r.block));
+      const maxBlock = EXPECTED_BLOCKS;
 
       for (let block = 1; block <= maxBlock; block++) {
         const weekRows = rotation.filter((r) => r.block === block);
@@ -571,12 +543,12 @@
         baseRow.flex2 = rotatedFlex.find((name) => name !== baseRow.flex1) || "";
 
         if (!baseRow.flex1 || !baseRow.flex2) {
-          const fallback = computeFlexCandidates(baseRow, state.employees, state.competencies, currentCounts)
+          const flexFallback = computeFlexCandidates(baseRow, state.employees, state.competencies, currentCounts)
             .filter((candidate) => !usedNames.has(candidate.name))
             .map((candidate) => candidate.name);
 
-          if (!baseRow.flex1) baseRow.flex1 = fallback[0] || "";
-          if (!baseRow.flex2) baseRow.flex2 = fallback.find((name) => name !== baseRow.flex1) || "";
+          if (!baseRow.flex1) baseRow.flex1 = flexFallback[0] || "";
+          if (!baseRow.flex2) baseRow.flex2 = flexFallback.find((name) => name !== baseRow.flex1) || "";
         }
 
         if (baseRow.flex1) {
@@ -695,7 +667,7 @@
               .slice(0, 3)
               .map((candidate) => candidate.name);
 
-            return service + ": " + current + " → " + (replacementList.join(" / ") || "geen match");
+            return `${service}: ${current} → ${replacementList.join(" / ") || "geen match"}`;
           })
           .filter(Boolean)
           .join("\n");
@@ -709,6 +681,68 @@
           replacements,
         };
       });
+    }
+
+    function refreshPlanning() {
+      buildRotationCycle();
+      render();
+    }
+
+    function saveState() {
+      const uniqueBlocks = Array.from(new Set(state.rotation.map((r) => Number(r.block) || 0))).filter(Boolean);
+      if (uniqueBlocks.length !== EXPECTED_BLOCKS || state.rotation.length !== EXPECTED_ROWS) {
+        buildRotationCycle();
+      }
+
+      const payload = {
+        activeTab: state.activeTab,
+        selectedBlock: state.selectedBlock,
+        selectedWeek: state.selectedWeek,
+        employees: state.employees,
+        competencies: state.competencies,
+        rotation: state.rotation,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      alert("Wijzigingen opgeslagen.");
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      try {
+        const parsed = JSON.parse(raw);
+        state.activeTab = parsed.activeTab || "weektemplate";
+        state.selectedBlock = parsed.selectedBlock || "1";
+        state.selectedWeek = parsed.selectedWeek || "1";
+        state.employees = Array.isArray(parsed.employees) ? parsed.employees : JSON.parse(JSON.stringify(defaultEmployees));
+        state.competencies = parsed.competencies && typeof parsed.competencies === "object" ? parsed.competencies : JSON.parse(JSON.stringify(defaultCompetencies));
+        state.rotation = Array.isArray(parsed.rotation) && parsed.rotation.length > 0 ? parsed.rotation : [];
+
+        const uniqueBlocks = Array.from(new Set(state.rotation.map((r) => Number(r.block) || 0))).filter(Boolean);
+        const validBlockCount = uniqueBlocks.length === EXPECTED_BLOCKS;
+        const validRowCount = state.rotation.length === EXPECTED_ROWS;
+
+        if (!validBlockCount || !validRowCount) {
+          state.rotation = [];
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Kon opgeslagen gegevens niet laden", error);
+        return false;
+      }
+    }
+
+    function resetState() {
+      localStorage.removeItem(STORAGE_KEY);
+      state.activeTab = "weektemplate";
+      state.selectedBlock = "1";
+      state.selectedWeek = "1";
+      state.employees = JSON.parse(JSON.stringify(defaultEmployees));
+      state.competencies = JSON.parse(JSON.stringify(defaultCompetencies));
+      buildRotationCycle();
+      render();
     }
 
     function escapeXml(value) {
@@ -741,14 +775,14 @@
 
       const roulatieRows = [
         ["Blok", "Week van blok", "Van", "Tot", "HCK", "ADE", "OK1", "OK2", "OK4", "OK-FLEX 1", "OK-FLEX 2"],
-        ...state.rotation.map((row) => [row.block, row.weekInBlock, formatDate(row.startDate), formatDate(row.endDate), row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex1, row.flex2])
+        ...state.rotation.map((row) => [row.block, row.weekInBlock, row.startDate, row.endDate, row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex1, row.flex2])
       ];
 
       const weektemplateRows = [
         ["Blok", currentRow.block, "Week", currentRow.weekInBlock],
         [],
         ["Dag", "Datum", "HCK", "ADE", "OK1", "OK2", "OK4", "OK-FLEX 1", "OK-FLEX 2", "Invaller suggestie"],
-        ...weekRows.map((row) => [row.day, formatDate(row.date), row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex, row.flex2, row.replacements])
+        ...weekRows.map((row) => [row.day, row.date, row.HCK, row.ADE, row.OK1, row.OK2, row.OK4, row.flex, row.flex2, row.replacements])
       ];
 
       const medewerkersRows = [
@@ -799,58 +833,6 @@
       URL.revokeObjectURL(url);
     }
 
-    function saveState() {
-      const payload = {
-        activeTab: state.activeTab,
-        selectedBlock: state.selectedBlock,
-        selectedWeek: state.selectedWeek,
-        employees: state.employees,
-        competencies: state.competencies,
-        rotation: state.rotation,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      alert("Wijzigingen opgeslagen.");
-    }
-
-    function loadState() {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-
-      try {
-        const parsed = JSON.parse(raw);
-        state.activeTab = parsed.activeTab || "weektemplate";
-        state.selectedBlock = parsed.selectedBlock || "1";
-        state.selectedWeek = parsed.selectedWeek || "1";
-        state.employees = Array.isArray(parsed.employees) ? parsed.employees : deepClone(defaultEmployees);
-        state.competencies = parsed.competencies && typeof parsed.competencies === "object"
-          ? parsed.competencies
-          : deepClone(defaultCompetencies);
-        state.rotation = Array.isArray(parsed.rotation) ? parsed.rotation : [];
-
-        const lastBlock = Math.max(...state.rotation.map((r) => Number(r.block) || 0), 0);
-        if (lastBlock < 26) {
-          state.rotation = [];
-          return false;
-        }
-
-        return true;
-      } catch (error) {
-        console.error("Kon opgeslagen gegevens niet laden", error);
-        return false;
-      }
-    }
-
-    function resetState() {
-      localStorage.removeItem(STORAGE_KEY);
-      state.activeTab = "weektemplate";
-      state.selectedBlock = "1";
-      state.selectedWeek = "1";
-      state.employees = deepClone(defaultEmployees);
-      state.competencies = deepClone(defaultCompetencies);
-      buildRotationCycle();
-      render();
-    }
-
     function renderTabs() {
       const tabs = [
         ["weektemplate", "Weektemplate"],
@@ -877,22 +859,18 @@
 
     function renderHeader() {
       const blockSelect = document.getElementById("selectedBlock");
-      const blockNumbers = Array.from(new Set(state.rotation.map((row) => row.block))).sort((a, b) => a - b);
-
-      blockSelect.innerHTML = blockNumbers
+      blockSelect.innerHTML = Array.from({ length: EXPECTED_BLOCKS }, (_, i) => i + 1)
         .map((block) => `<option value="${block}" ${String(block) === state.selectedBlock ? "selected" : ""}>Blok ${block}</option>`)
         .join("");
 
       document.getElementById("selectedWeek").value = state.selectedWeek;
 
       const current = getCurrentBlockRow();
-      document.getElementById("cardBlock").textContent = "Blok " + current.block;
-      document.getElementById("cardWeek").textContent = "Week " + state.selectedWeek;
-      document.getElementById("cardPeriod").textContent = formatDate(current.startDate) + " t/m " + formatDate(current.endDate);
-
-      const maxBlock = Math.max(...state.rotation.map((r) => r.block));
-      document.getElementById("blockInfo").textContent =
-        "Aantal blokken: " + maxBlock + " • Aantal rijen in roulatie: " + state.rotation.length;
+      document.getElementById("cardBlock").textContent = `Blok ${current.block}`;
+      document.getElementById("cardWeek").textContent = `Week ${state.selectedWeek}`;
+      document.getElementById("cardPeriod").textContent = `${formatDate(current.startDate)} t/m ${formatDate(current.endDate)}`;
+      const info = document.getElementById("blockInfo");
+      if (info) info.textContent = `Aantal blokken: ${EXPECTED_BLOCKS} • Aantal rijen in roulatie: ${state.rotation.length}`;
 
       blockSelect.onchange = (e) => {
         state.selectedBlock = e.target.value;
@@ -904,10 +882,7 @@
         render();
       };
 
-      document.getElementById("refreshBtn").onclick = () => {
-        buildRotationCycle();
-        render();
-      };
+      document.getElementById("refreshBtn").onclick = refreshPlanning;
       document.getElementById("saveBtn").onclick = saveState;
       document.getElementById("resetBtn").onclick = resetState;
       document.getElementById("exportBtn").onclick = exportExcel;
@@ -944,7 +919,7 @@
                     ${services.map((service) => {
                       const person = state.employees.find((employee) => employee.name === row[service]);
                       const isOff = person ? offSet(person.offCodes).has(row.day) : false;
-                      return `<td>${nameCell(row[service], isOff)}${person && isICEmployee(person) ? '<span class="pill">IC</span>' : ""}</td>`;
+                      return `<td>${nameCell(row[service], isOff)}${person && isICEmployee(person) ? '<span class="pill">IC</span>' : ''}</td>`;
                     }).join("")}
                     <td>${row.flex || "-"}</td>
                     <td>${row.flex2 || "-"}</td>
@@ -962,10 +937,7 @@
       return `
         <div class="panel">
           <h2>Roulatie (2 weken)</h2>
-          <p class="muted small">
-            Jaarvulling tot eind 2026. Diensten rouleren op basis van de competentiematrix,
-            met voorrang voor Groen zodat kennis behouden blijft. OK-FLEX 1 en 2 rouleren ook mee.
-          </p>
+          <p class="muted small">De basisdiensten rouleren in een cyclus van 3 blokken = 6 weken. Binnen elk blok blijven week 1 en week 2 gelijk. OK-FLEX 1 en OK-FLEX 2 rouleren ook mee zodat iedereen die beschikbaar is aan de beurt komt.</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -984,8 +956,8 @@
                   <tr>
                     <td>${row.block}</td>
                     <td><input class="input" data-rotation="${index}" data-field="weekInBlock" value="${row.weekInBlock}" /></td>
-                    <td><input class="input" data-rotation="${index}" data-field="startDate" value="${formatDate(row.startDate)}" /></td>
-                    <td><input class="input" data-rotation="${index}" data-field="endDate" value="${formatDate(row.endDate)}" /></td>
+                    <td><input class="input" data-rotation="${index}" data-field="startDate" value="${row.startDate}" /></td>
+                    <td><input class="input" data-rotation="${index}" data-field="endDate" value="${row.endDate}" /></td>
                     ${services.map((service) => `
                       <td><input class="input" data-rotation="${index}" data-field="${service}" value="${row[service] || ""}" /></td>
                     `).join("")}
@@ -1060,7 +1032,7 @@
               <tbody>
                 ${state.employees.map((employee) => `
                   <tr>
-                    <td>${employee.name}${isICEmployee(employee) ? '<span class="pill">IC</span>' : ""}</td>
+                    <td>${employee.name}${isICEmployee(employee) ? '<span class="pill">IC</span>' : ''}</td>
                     ${services.map((service) => `
                       <td>
                         <select class="input" data-skill-name="${employee.name}" data-skill-service="${service}">
@@ -1120,10 +1092,7 @@
         input.addEventListener("input", (e) => {
           const index = Number(e.target.dataset.rotation);
           const field = e.target.dataset.field;
-          state.rotation[index][field] =
-            field === "startDate" || field === "endDate"
-              ? normalizeDateInput(e.target.value)
-              : e.target.value;
+          state.rotation[index][field] = e.target.value;
         });
       });
 
@@ -1168,7 +1137,7 @@
       const addBtn = document.getElementById("addEmployeeBtn");
       if (addBtn) {
         addBtn.onclick = () => {
-          const newName = "Nieuw" + (state.employees.length + 1);
+          const newName = `Nieuw${state.employees.length + 1}`;
           state.employees.push({
             name: newName,
             hours: 36,
@@ -1212,7 +1181,6 @@
     } else if (!Array.isArray(state.rotation) || state.rotation.length === 0) {
       buildRotationCycle();
     }
-
     render();
   </script>
 </body>
